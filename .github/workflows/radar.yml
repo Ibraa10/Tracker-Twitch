@@ -1,12 +1,12 @@
 name: Radar codes Gil2
 
 on:
-  # Toutes les 10 min entre 8h et 18h (heure de Bruxelles) : regarde si Gil2 est en live.
+  # Toutes les 10 min entre 8h et 17h (heure de Bruxelles) : regarde si Gil2 ou Edouardo est en live.
   # Hors live → s'arrête en quelques secondes. En live → écoute le chat jusqu'à la fin du live.
-  # GitHub compte en UTC : 6h-17h UTC couvre 8h-18h à Bruxelles hiver comme été,
+  # GitHub compte en UTC : 6h-16h UTC couvre 8h-17h à Bruxelles hiver comme été,
   # le script filtre ensuite l'heure exacte de Bruxelles.
   schedule:
-    - cron: "*/10 6-17 * * *"
+    - cron: "*/10 6-16 * * *"
   # Relance automatique quand radar.mjs ou ce fichier est mis à jour
   push:
     branches: [main]
@@ -37,9 +37,9 @@ jobs:
       - name: Écouter le chat
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
-          CHANNEL: gil2_
+          CHANNELS: "gil2_, edouardotv"
           MODE: ${{ github.event_name == 'workflow_dispatch' && 'manual' || 'auto' }}
           EVENT: ${{ github.event_name }}
-          HOURS: "8-18"
+          HOURS: "8-17"
           DURATION_MINUTES: ${{ github.event.inputs.minutes || '345' }}
         run: node radar.mjs

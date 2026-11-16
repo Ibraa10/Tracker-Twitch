@@ -2,7 +2,11 @@
 // et envoie chaque nouveau code sur ton téléphone via ntfy.
 // Aucune dépendance : nécessite Node 22+ (WebSocket intégré).
 
-const CHANNEL   = (process.env.CHANNEL || "gil2_").toLowerCase().replace(/^#/, "");
+const CHANNELS  = (process.env.CHANNELS || process.env.CHANNEL || "gil2_, edouardotv")
+                    .toLowerCase().split(",").map(s => s.trim().replace(/^#/, "")).filter(Boolean);
+// jolis noms pour les notifications
+const NAMES = { "gil2_": "Gil2", "edouardotv": "Edouardo" };
+const nameOf = ch => NAMES[ch] || ch;
 const TOPIC     = process.env.NTFY_TOPIC;                       // secret GitHub
 const NTFY      = process.env.NTFY_SERVER || "https://ntfy.sh";
 const MINUTES   = Number(process.env.DURATION_MINUTES || 330);  // durée d'écoute
@@ -69,7 +73,7 @@ function trusted(user, tags) {
   if (/(^|,)(broadcaster|moderator|vip)\//.test(badges)) return true;
   if (tags.mod === "1") return true;
   const u = (user || "").toLowerCase();
-  return u === CHANNEL || EXTRA.includes(u);
+  return CHANNELS.includes(u) || EXTRA.includes(u);
 }
 
 const seen = new Set();
@@ -77,7 +81,7 @@ export function analyse(user, text, tags = {}, isAnnouncement = false) {
   if (!trusted(user, tags) && !isAnnouncement) return null;
   console.log(`· ${user}: ${text}`);   // trace des messages de Gil/modos/bots dans les logs
   const original = text;
-  const isGil = /(^|,)broadcaster\//.test(tags.badges || "") || (user || "").toLowerCase() === CHANNEL;
+  const isGil = /(^|,)broadcaster\//.test(tags.badges || "") || CHANNELS.includes((user || "").toLowerCase());
   text = text.replace(/\b(?:https?:\/\/|www\.)\S+/gi, " ").replace(/\b[\w-]+\.(?:com|fr|gg|tv|be)\b\S*/gi, " "); // on ignore les liens
   const low = text.toLowerCase();
   const hasKw = KEYWORDS.some(k => low.includes(k));
@@ -110,8 +114,8 @@ async function onHit(hit) {
   const main = hit.codes[0];
   console.log(`🚨 ${new Date().toISOString()} ${hit.user}: ${hit.text}  →  ${hit.codes.join(", ") || "(pas de code isolé)"}`);
   await push({
-    title: main ? `Code Gil2 : ${main}` : `Gil2 dans le chat`,
-    message: main ? `${main}\n\n${hit.user} : ${hit.text}` : hit.text,
+    title: main ? `🚨 Code : ${main}` : `💬 ${hit.user} dans le chat`,
+    message: main ? `${main}\n\n${hit.user} : ${hit.text}` : `${hit.user} : ${hit.text}`,
     tags: main ? "rotating_light" : "speech_balloon",
   });
 }
@@ -131,8 +135,8 @@ function connect() {
     ws.send("CAP REQ :twitch.tv/tags twitch.tv/commands");
     ws.send("PASS SCHMOOPIIE");
     ws.send("NICK justinfan" + Math.floor(10000 + Math.random() * 80000));
-    ws.send("JOIN #" + CHANNEL);
-    console.log("Connecté, salon #" + CHANNEL);
+    CHANNELS.forEach(ch => ws.send("JOIN #" + ch));
+    console.log("Connecté, salons : " + CHANNELS.map(c => "#" + c).join(", "));
   };
   ws.onmessage = e => String(e.data).split("\r\n").filter(Boolean).forEach(handleLine);
   ws.onclose = () => {
@@ -163,15 +167,15 @@ function handleLine(line) {
   if (hit) onHit(hit);
 }
 
-// ---------- est-il en live ? ----------
-// true = en live, false = hors ligne, null = impossible de savoir
-async function isLive() {
+// ---------- qui est en live ? ----------
+// Pour une chaîne : true = en live, false = hors ligne, null = impossible de savoir
+async function isLiveOne(channel) {
   // 1) API publique utilisée par le site Twitch lui-même
   try {
     const r = await fetch("https://gql.twitch.tv/gql", {
       method: "POST",
       headers: { "Client-Id": "kimne78kx3ncx6brgo4mv6wki5h1ko", "Content-Type": "application/json" },
-      body: JSON.stringify({ query: `query{user(login:"${CHANNEL}"){stream{id}}}` }),
+      body: JSON.stringify({ query: `query{user(login:"${channel}"){stream{id}}}` }),
       signal: AbortSignal.timeout(10000),
     });
     if (r.ok) {
@@ -181,10 +185,22 @@ async function isLive() {
   } catch {}
   // 2) Secours : decapi.me
   try {
-    const r = await fetch(`https://decapi.me/twitch/uptime/${CHANNEL}`, { signal: AbortSignal.timeout(10000) });
+    const r = await fetch(`https://decapi.me/twitch/uptime/${channel}`, { signal: AbortSignal.timeout(10000) });
     if (r.ok) { const t = (await r.text()).toLowerCase(); if (t.includes("offline")) return false; if (/\d/.test(t)) return true; }
   } catch {}
   return null;
+}
+
+// Toutes les chaînes : { live: [chaînes en live], known: au moins une réponse obtenue }
+async function liveChannels() {
+  const live = [];
+  let known = false;
+  for (const ch of CHANNELS) {
+    const s = await isLiveOne(ch);
+    if (s !== null) known = true;
+    if (s === true) live.push(ch);
+  }
+  return { live, known };
 }
 
 // ---------- lancement ----------
@@ -205,20 +221,21 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split("/").pop()
       const h = parseInt(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Brussels", hour: "numeric", hourCycle: "h23" }).format(new Date()), 10);
       if (h < from || h >= to) { console.log(`Il est ${h}h à Bruxelles, hors de la plage ${from}h-${to}h : rien à faire.`); process.exit(0); }
     }
-    const live = await isLive();
-    if (live !== true) { console.log(live === false ? `${CHANNEL} n'est pas en live, rien à faire.` : "Statut du live inconnu, on réessaiera dans 10 min."); process.exit(0); }
-    console.log(`🔴 ${CHANNEL} est en live : radar lancé (max ${MINUTES} min)`);
-    await push({ title: "🔴 Gil2 est en live", message: "Le radar écoute le chat, tu seras prévenu dès qu'il écrit.", priority: "high", tags: "red_circle", click: `https://www.twitch.tv/${CHANNEL}` });
-    // s'arrête après ~10 min hors ligne (évite de couper sur une petite coupure du stream)
+    const { live, known } = await liveChannels();
+    if (live.length === 0) { console.log(known ? "Personne en live, rien à faire." : "Statut des lives inconnu, on réessaiera dans 10 min."); process.exit(0); }
+    const names = live.map(nameOf).join(" et ");
+    console.log(`🔴 En live : ${names} — radar lancé (max ${MINUTES} min)`);
+    await push({ title: `🔴 ${names} en live`, message: "Le radar écoute le chat, tu seras prévenu dès qu'un code tombe.", priority: "high", tags: "red_circle", click: `https://www.twitch.tv/${live[0]}` });
+    // s'arrête après ~12 min sans personne en live (évite de couper sur une petite coupure du stream)
     let offlineChecks = 0;
     setInterval(async () => {
-      const l = await isLive();
-      offlineChecks = l === false ? offlineChecks + 1 : 0;
-      if (offlineChecks >= 4) stop("le live est terminé");
+      const r = await liveChannels();
+      offlineChecks = (r.known && r.live.length === 0) ? offlineChecks + 1 : 0;
+      if (offlineChecks >= 4) stop("plus personne en live");
     }, 3 * 60 * 1000);
   } else {
-    console.log(`Radar démarré pour ${MINUTES} min sur #${CHANNEL}`);
-    if (START_PING) await push({ title: "Radar Gil2 actif", message: `J'écoute le chat de ${CHANNEL} pendant ${Math.round(MINUTES / 60 * 10) / 10} h.`, priority: "min", tags: "satellite" });
+    console.log(`Radar démarré pour ${MINUTES} min sur ${CHANNELS.map(c => "#" + c).join(", ")}`);
+    if (START_PING) await push({ title: "Radar actif", message: `J'écoute ${CHANNELS.map(nameOf).join(" et ")} pendant ${Math.round(MINUTES / 60 * 10) / 10} h.`, priority: "min", tags: "satellite" });
   }
   connect();
   setInterval(() => console.log(`… ${msgCount} messages lus`), 10 * 60 * 1000);
