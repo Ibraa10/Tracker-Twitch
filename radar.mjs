@@ -72,23 +72,44 @@ function trusted(user, tags) {
 const seen = new Set();
 export function analyse(user, text, tags = {}, isAnnouncement = false) {
   if (!trusted(user, tags) && !isAnnouncement) return null;
+  console.log(`· ${user}: ${text}`);   // trace des messages de Gil/modos/bots dans les logs
+  const original = text;
+  text = text.replace(/\b(?:https?:\/\/|www\.)\S+/gi, " ").replace(/\b[\w-]+\.(?:com|fr|gg|tv|be)\b\S*/gi, " "); // on ignore les liens
   const low = text.toLowerCase();
   const hasKw = KEYWORDS.some(k => low.includes(k));
   let codes = extractCodes(text);
   if (!hasKw) codes = codes.filter(c => new RegExp("\\bcodes?\\b[^A-Za-z0-9]{0,12}" + c.replace(/-/g, "\\-"), "i").test(text));
-  if (!hasKw && codes.length === 0) return null;
+  // Message court qui ressemble à un code posté seul (ex. « GTA6 », 'gta6', « NOEL50 !! »)
+  if (codes.length === 0) {
+    const words = text.trim().split(/\s+/).filter(w => /[A-Za-z0-9]/.test(w));
+    if (words.length >= 1 && words.length <= 3) {
+      for (const w of words) {
+        const c = w.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9_\-]+$/g, "");
+        if (c.length < 3 || c.length > 32) continue;
+        const U = c.toUpperCase();
+        if (STOP.has(U) || /^\d+$/.test(c) || /^\d[vV]\d$/.test(c)) continue;      // 1v1, 2v2…
+        const mixed = /[A-Za-z]/.test(c) && /\d/.test(c);                          // GTA6, noel50
+        const caps  = words.length === 1 && c === U && c.length >= 4 && !/(.)\1\1/.test(c); // NOEL (pas MDRRR)
+        if (mixed || caps) { codes.push(c); break; }
+      }
+    }
+  }
   const fresh = codes.filter(c => !seen.has(c.toUpperCase()));
-  if (codes.length && fresh.length === 0) return null;
   fresh.forEach(c => seen.add(c.toUpperCase()));
-  return { user, text, codes: fresh };
+  // Tous les messages de Gil lui-même sont transférés, code détecté ou non
+  const isGil = /(^|,)broadcaster\//.test(tags.badges || "") || (user || "").toLowerCase() === CHANNEL;
+  if (isGil) return { user, text: original, codes: fresh.length ? fresh : codes, isGil: true };
+  if (fresh.length === 0) return null;   // modos / bots : seulement s'il y a un nouveau code
+  return { user, text: original, codes: fresh };
 }
 
 async function onHit(hit) {
   const main = hit.codes[0];
   console.log(`🚨 ${new Date().toISOString()} ${hit.user}: ${hit.text}  →  ${hit.codes.join(", ") || "(pas de code isolé)"}`);
   await push({
-    title: main ? `Code Gil2 : ${main}` : "Message code Gil2",
-    message: main ? `${main}\n\n${hit.user} : ${hit.text}` : `${hit.user} : ${hit.text}`,
+    title: main ? `Code Gil2 : ${main}` : `Gil2 dans le chat`,
+    message: main ? `${main}\n\n${hit.user} : ${hit.text}` : hit.text,
+    tags: main ? "rotating_light" : "speech_balloon",
   });
 }
 
