@@ -1,25 +1,27 @@
 name: Radar codes Gil2
 
 on:
-  # Lancement automatique (heures en UTC !).
-  # 06:50 UTC = 07:50 à Bruxelles en hiver (08:50 en été), du lundi au vendredi.
+  # Toutes les 10 min : regarde si Gil2 est en live.
+  # Hors live → s'arrête en quelques secondes. En live → écoute le chat jusqu'à la fin du live.
   schedule:
-    - cron: "50 6 * * 1-5"
-  # Bouton "Run workflow" pour lancer à la main (live surprise, week-end…)
+    - cron: "*/10 * * * *"
   # Relance automatique quand radar.mjs ou ce fichier est mis à jour
   push:
     branches: [main]
     paths: ["radar.mjs", ".github/workflows/radar.yml"]
+  # Bouton "Run workflow" : écoute forcée, même si le live n'est pas détecté
   workflow_dispatch:
     inputs:
       minutes:
         description: "Durée d'écoute en minutes (max 350)"
         default: "330"
 
-# Jamais deux radars en même temps
+# Un seul radar à la fois.
+# Les vérifications automatiques attendent leur tour au lieu de couper un radar qui écoute un live ;
+# une mise à jour du code ou un lancement manuel remplace le radar en cours.
 concurrency:
   group: radar
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
 
 jobs:
   radar:
@@ -34,5 +36,6 @@ jobs:
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           CHANNEL: gil2_
-          DURATION_MINUTES: ${{ github.event.inputs.minutes || '330' }}
+          MODE: ${{ github.event_name == 'workflow_dispatch' && 'manual' || 'auto' }}
+          DURATION_MINUTES: ${{ github.event.inputs.minutes || '345' }}
         run: node radar.mjs

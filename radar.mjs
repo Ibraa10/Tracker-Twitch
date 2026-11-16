@@ -163,15 +163,58 @@ function handleLine(line) {
   if (hit) onHit(hit);
 }
 
+// ---------- est-il en live ? ----------
+// true = en live, false = hors ligne, null = impossible de savoir
+async function isLive() {
+  // 1) API publique utilisée par le site Twitch lui-même
+  try {
+    const r = await fetch("https://gql.twitch.tv/gql", {
+      method: "POST",
+      headers: { "Client-Id": "kimne78kx3ncx6brgo4mv6wki5h1ko", "Content-Type": "application/json" },
+      body: JSON.stringify({ query: `query{user(login:"${CHANNEL}"){stream{id}}}` }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (r.ok) {
+      const j = await r.json();
+      if (j?.data?.user !== undefined) return !!j.data.user?.stream;
+    }
+  } catch {}
+  // 2) Secours : decapi.me
+  try {
+    const r = await fetch(`https://decapi.me/twitch/uptime/${CHANNEL}`, { signal: AbortSignal.timeout(10000) });
+    if (r.ok) { const t = (await r.text()).toLowerCase(); if (t.includes("offline")) return false; if (/\d/.test(t)) return true; }
+  } catch {}
+  return null;
+}
+
 // ---------- lancement ----------
+// MODE=auto  : vérifie le live, n'écoute que s'il est en live, s'arrête à la fin du live
+// MODE=manual: écoute pendant DURATION_MINUTES quoi qu'il arrive
+const MODE = process.env.MODE || "manual";
+function stop(reason) {
+  stopping = true; try { ws.close(); } catch {}
+  console.log(`Fin de l'écoute : ${reason} (${msgCount} messages lus).`);
+  process.exit(0);
+}
+
 if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split("/").pop())) {
-  console.log(`Radar démarré pour ${MINUTES} min sur #${CHANNEL}`);
-  if (START_PING) await push({ title: "Radar Gil2 actif", message: `J'écoute le chat de ${CHANNEL} pendant ${Math.round(MINUTES / 60 * 10) / 10} h.`, priority: "min", tags: "satellite" });
+  if (MODE === "auto") {
+    const live = await isLive();
+    if (live !== true) { console.log(live === false ? `${CHANNEL} n'est pas en live, rien à faire.` : "Statut du live inconnu, on réessaiera dans 10 min."); process.exit(0); }
+    console.log(`🔴 ${CHANNEL} est en live : radar lancé (max ${MINUTES} min)`);
+    await push({ title: "🔴 Gil2 est en live", message: "Le radar écoute le chat, tu seras prévenu dès qu'il écrit.", priority: "high", tags: "red_circle", click: `https://www.twitch.tv/${CHANNEL}` });
+    // s'arrête après ~10 min hors ligne (évite de couper sur une petite coupure du stream)
+    let offlineChecks = 0;
+    setInterval(async () => {
+      const l = await isLive();
+      offlineChecks = l === false ? offlineChecks + 1 : 0;
+      if (offlineChecks >= 4) stop("le live est terminé");
+    }, 3 * 60 * 1000);
+  } else {
+    console.log(`Radar démarré pour ${MINUTES} min sur #${CHANNEL}`);
+    if (START_PING) await push({ title: "Radar Gil2 actif", message: `J'écoute le chat de ${CHANNEL} pendant ${Math.round(MINUTES / 60 * 10) / 10} h.`, priority: "min", tags: "satellite" });
+  }
   connect();
   setInterval(() => console.log(`… ${msgCount} messages lus`), 10 * 60 * 1000);
-  setTimeout(() => {
-    stopping = true; try { ws.close(); } catch {}
-    console.log(`Fin de l'écoute (${msgCount} messages lus).`);
-    process.exit(0);
-  }, MINUTES * 60 * 1000);
+  setTimeout(() => stop("durée maximale atteinte"), MINUTES * 60 * 1000);
 }
