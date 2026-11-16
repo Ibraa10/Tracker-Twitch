@@ -43,6 +43,22 @@ function encodeHeader(s) {
 
 // ---------- détection ----------
 const STOP = new Set(["CODE","CODES","PACK","PACKS","GG","GGWP","LOL","MDR","PTDR","OK","LIVE","TWITCH","HTTP","HTTPS","WWW","COM","RLCS","LCQ","COACH","SUB","SUBS","FREE","GIL2","GIL","CARDS","LE","LA","LES","UN","UNE","DES","ET","EST","POUR","SUR","AVEC","DANS","VOICI","NOUVEAU","CHAT","VITE"]);
+// Emotes très courantes (BTTV/7TV/FFZ) qui ne sont pas signalées par Twitch dans le message
+["LUL","LULW","KEKW","OMEGALUL","POG","POGU","POGGERS","POGCHAMP","PEPEGA","MONKAS","SADGE","COPIUM","HOPIUM","AYAYA","EZ","EZCLAP","GIGACHAD","CLAP","KAPPA","PEPELAUGH","WIDEPEEPOHAPPY","CATJAM","NOWAY","BASED","MALDING","PEEPOHAPPY","DANSGAME","KEKL"].forEach(e => STOP.add(e));
+
+// Twitch indique les emotes natives/sub dans le tag `emotes` (id:début-fin,...). On les efface du texte.
+function stripEmotes(text, emotesTag) {
+  if (!emotesTag) return text;
+  const chars = Array.from(text);   // indices en points de code, comme Twitch
+  emotesTag.split("/").forEach(part => {
+    const i = part.indexOf(":"); if (i === -1) return;
+    part.slice(i + 1).split(",").forEach(r => {
+      const [a, b] = r.split("-").map(Number);
+      if (Number.isInteger(a) && Number.isInteger(b)) for (let k = a; k <= b && k < chars.length; k++) chars[k] = " ";
+    });
+  });
+  return chars.join("");
+}
 
 export function extractCodes(text) {
   const found = [];
@@ -87,6 +103,7 @@ export function analyse(user, text, tags = {}, isAnnouncement = false) {
   //              mais on ne transfère pas son bavardage s'il n'est pas chez lui.
   const isOwner = /(^|,)broadcaster\//.test(tags.badges || "");
   const isStreamer = isOwner || CHANNELS.includes(uName);
+  text = stripEmotes(text, tags.emotes);   // on efface les emotes natives/sub signalées par Twitch
   text = text.replace(/\b(?:https?:\/\/|www\.)\S+/gi, " ").replace(/\b[\w-]+\.(?:com|fr|gg|tv|be)\b\S*/gi, " "); // on ignore les liens
   const low = text.toLowerCase();
   const hasKw = KEYWORDS.some(k => low.includes(k));
