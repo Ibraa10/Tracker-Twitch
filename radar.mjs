@@ -81,16 +81,19 @@ export function analyse(user, text, tags = {}, isAnnouncement = false) {
   if (!trusted(user, tags) && !isAnnouncement) return null;
   console.log(`· ${user}: ${text}`);   // trace des messages de Gil/modos/bots dans les logs
   const original = text;
-  // « transférer tous les messages » = seulement le propriétaire du chat en cours (badge streamer).
-  // Ainsi un streamer qui bavarde dans le chat d'un autre ne déclenche que sur un vrai code.
-  const isGil = /(^|,)broadcaster\//.test(tags.badges || "");
+  const uName = (user || "").toLowerCase();
+  // isOwner  = propriétaire du chat en cours (badge streamer) → on transfère TOUS ses messages.
+  // isStreamer = Gil ou Edouardo, dans n'importe quel chat → on détecte même un code posté seul,
+  //              mais on ne transfère pas son bavardage s'il n'est pas chez lui.
+  const isOwner = /(^|,)broadcaster\//.test(tags.badges || "");
+  const isStreamer = isOwner || CHANNELS.includes(uName);
   text = text.replace(/\b(?:https?:\/\/|www\.)\S+/gi, " ").replace(/\b[\w-]+\.(?:com|fr|gg|tv|be)\b\S*/gi, " "); // on ignore les liens
   const low = text.toLowerCase();
   const hasKw = KEYWORDS.some(k => low.includes(k));
   let codes = extractCodes(text);
   if (!hasKw) codes = codes.filter(c => new RegExp("\\bcodes?\\b[^A-Za-z0-9]{0,12}" + c.replace(/-/g, "\\-"), "i").test(text));
   // Message court qui ressemble à un code posté seul (ex. « GTA6 », 'gta6', « NOEL50 !! »)
-  if (isGil && codes.length === 0) {
+  if (isStreamer && codes.length === 0) {
     const words = text.trim().split(/\s+/).filter(w => /[A-Za-z0-9]/.test(w));
     if (words.length >= 1 && words.length <= 3) {
       for (const w of words) {
@@ -106,9 +109,9 @@ export function analyse(user, text, tags = {}, isAnnouncement = false) {
   }
   const fresh = codes.filter(c => !seen.has(c.toUpperCase()));
   fresh.forEach(c => seen.add(c.toUpperCase()));
-  // Tous les messages de Gil lui-même sont transférés, code détecté ou non
-  if (isGil) return { user, text: original, codes: fresh.length ? fresh : codes, isGil: true };
-  if (fresh.length === 0) return null;   // modos / bots : seulement s'il y a un nouveau code
+  // Le propriétaire du chat : tous ses messages sont transférés, code détecté ou non
+  if (isOwner) return { user, text: original, codes: fresh.length ? fresh : codes, isGil: true };
+  if (fresh.length === 0) return null;   // streamers invités / modos / bots : seulement s'il y a un nouveau code
   return { user, text: original, codes: fresh };
 }
 
