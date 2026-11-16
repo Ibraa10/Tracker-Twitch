@@ -46,10 +46,13 @@ export function extractCodes(text) {
   let m;
   while ((m = re.exec(text))) {
     const toks = m[1].match(/[A-Za-z0-9][A-Za-z0-9_\-]{2,31}/g) || [];
-    for (const c of toks.slice(0, 5)) {
+    const afterSep = /^\s*(?:promo\s*)?[:：=>»\-–]/i.test(m[1]);   // « code : xxx »
+    for (const [i, c] of toks.slice(0, 5).entries()) {
+      // un mot normal (sans chiffre, pas en MAJUSCULES) n'est un code que s'il suit directement « code : »
+      if (/^[A-Za-zÀ-ÿ_\-]+$/.test(c) && c !== c.toUpperCase() && !(afterSep && i === 0)) continue;
       const U = c.toUpperCase();
       if (STOP.has(U) || /^GIL2-?CARDS?$/.test(U) || /^(PROMO|EST|IS|CEST|VOICI|NOUVEAU|DISPO|ACTIF|SUR|POUR)$/.test(U)) continue;
-      if (/^[a-zà-ÿ]+$/.test(c) && c.length < 6) continue; // petit mot français
+      if (/^[a-zà-ÿ]+$/.test(c) && c.length < 6 && !(afterSep && i === 0)) continue; // petit mot français
       found.push(c); break;
     }
   }
