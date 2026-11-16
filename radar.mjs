@@ -92,18 +92,20 @@ export function analyse(user, text, tags = {}, isAnnouncement = false) {
   const hasKw = KEYWORDS.some(k => low.includes(k));
   let codes = extractCodes(text);
   if (!hasKw) codes = codes.filter(c => new RegExp("\\bcodes?\\b[^A-Za-z0-9]{0,12}" + c.replace(/-/g, "\\-"), "i").test(text));
-  // Message court qui ressemble à un code posté seul (ex. « GTA6 », 'gta6', « NOEL50 !! »)
+  // Message court d'un streamer qui ressemble à un ou plusieurs codes bruts
+  // Ex. « GTA6 », 'gta6', « NOEL50 !! », « EDOUARDOGOAT / MIAMIGOAT »
   if (isStreamer && codes.length === 0) {
-    const words = text.trim().split(/\s+/).filter(w => /[A-Za-z0-9]/.test(w));
-    if (words.length >= 1 && words.length <= 3) {
-      for (const w of words) {
+    // on coupe aussi sur / , | pour gérer plusieurs codes dans un même message
+    const tokens = text.split(/[\s/,|]+/).filter(w => /[A-Za-z0-9]/.test(w));
+    if (tokens.length >= 1 && tokens.length <= 4) {
+      for (const w of tokens) {
         const c = w.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9_\-]+$/g, "");
         if (c.length < 3 || c.length > 32) continue;
         const U = c.toUpperCase();
-        if (STOP.has(U) || /^\d+$/.test(c) || /^\d[vV]\d$/.test(c) || /^\d{1,2}[hH]\d{0,2}$/.test(c)) continue;      // 1v1, 2v2…
-        const mixed = /[A-Za-z]/.test(c) && /\d/.test(c);                          // GTA6, noel50
-        const caps  = words.length === 1 && c === U && c.length >= 4 && !/(.)\1\1/.test(c); // NOEL (pas MDRRR)
-        if (mixed || caps) { codes.push(c); break; }
+        if (STOP.has(U) || /^\d+$/.test(c) || /^\d[vV]\d$/.test(c) || /^\d{1,2}[hH]\d{0,2}$/.test(c)) continue;      // 1v1, 2v2, 17h…
+        const mixed = /[A-Za-z]/.test(c) && /\d/.test(c);               // GTA6, noel50
+        const caps  = c === U && c.length >= 4 && !/(.)\1\1/.test(c);   // EDOUARDOGOAT, NOEL (pas MDRRR)
+        if (mixed || caps) codes.push(c);                               // on garde TOUS les codes trouvés
       }
     }
   }
@@ -116,12 +118,14 @@ export function analyse(user, text, tags = {}, isAnnouncement = false) {
 }
 
 async function onHit(hit) {
-  const main = hit.codes[0];
-  console.log(`🚨 ${new Date().toISOString()} ${hit.user}: ${hit.text}  →  ${hit.codes.join(", ") || "(pas de code isolé)"}`);
+  const codes = hit.codes || [];
+  const label = codes.length > 1 ? "Codes" : "Code";
+  const joined = codes.join("   ");
+  console.log(`🚨 ${new Date().toISOString()} ${hit.user}: ${hit.text}  →  ${codes.join(", ") || "(pas de code isolé)"}`);
   await push({
-    title: main ? `🚨 Code : ${main}` : `💬 ${hit.user} dans le chat`,
-    message: main ? `${main}\n\n${hit.user} : ${hit.text}` : `${hit.user} : ${hit.text}`,
-    tags: main ? "rotating_light" : "speech_balloon",
+    title: codes.length ? `🚨 ${label} : ${joined}` : `💬 ${hit.user} dans le chat`,
+    message: codes.length ? `${joined}\n\n${hit.user} : ${hit.text}` : `${hit.user} : ${hit.text}`,
+    tags: codes.length ? "rotating_light" : "speech_balloon",
   });
 }
 
