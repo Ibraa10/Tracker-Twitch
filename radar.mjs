@@ -199,6 +199,12 @@ function stop(reason) {
 
 if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split("/").pop())) {
   if (MODE === "auto") {
+    // Vérifications planifiées : seulement dans la plage horaire choisie (heure de Bruxelles)
+    if (process.env.EVENT === "schedule" && process.env.HOURS) {
+      const [from, to] = process.env.HOURS.split("-").map(Number);
+      const h = parseInt(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Brussels", hour: "numeric", hourCycle: "h23" }).format(new Date()), 10);
+      if (h < from || h >= to) { console.log(`Il est ${h}h à Bruxelles, hors de la plage ${from}h-${to}h : rien à faire.`); process.exit(0); }
+    }
     const live = await isLive();
     if (live !== true) { console.log(live === false ? `${CHANNEL} n'est pas en live, rien à faire.` : "Statut du live inconnu, on réessaiera dans 10 min."); process.exit(0); }
     console.log(`🔴 ${CHANNEL} est en live : radar lancé (max ${MINUTES} min)`);
