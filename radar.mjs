@@ -128,8 +128,12 @@ export function analyse(user, text, tags = {}, isAnnouncement = false) {
   }
   const fresh = codes.filter(c => !seen.has(c.toUpperCase()));
   fresh.forEach(c => seen.add(c.toUpperCase()));
-  // Le propriétaire du chat : tous ses messages sont transférés, code détecté ou non
-  if (isOwner) return { user, text: original, codes: fresh.length ? fresh : codes, isGil: true };
+  // Le propriétaire du chat : ses messages sont transférés, code détecté ou non…
+  if (isOwner) {
+    if (fresh.length || codes.length) return { user, text: original, codes: fresh.length ? fresh : codes, isGil: true };
+    if (!/[A-Za-z0-9]/.test(text)) return null;   // …sauf un message uniquement emojis/emotes (aucun code possible)
+    return { user, text: original, codes: [], isGil: true };
+  }
   if (fresh.length === 0) return null;   // streamers invités / modos / bots : seulement s'il y a un nouveau code
   return { user, text: original, codes: fresh };
 }
