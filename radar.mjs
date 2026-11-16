@@ -81,7 +81,9 @@ export function analyse(user, text, tags = {}, isAnnouncement = false) {
   if (!trusted(user, tags) && !isAnnouncement) return null;
   console.log(`· ${user}: ${text}`);   // trace des messages de Gil/modos/bots dans les logs
   const original = text;
-  const isGil = /(^|,)broadcaster\//.test(tags.badges || "") || CHANNELS.includes((user || "").toLowerCase());
+  // « transférer tous les messages » = seulement le propriétaire du chat en cours (badge streamer).
+  // Ainsi un streamer qui bavarde dans le chat d'un autre ne déclenche que sur un vrai code.
+  const isGil = /(^|,)broadcaster\//.test(tags.badges || "");
   text = text.replace(/\b(?:https?:\/\/|www\.)\S+/gi, " ").replace(/\b[\w-]+\.(?:com|fr|gg|tv|be)\b\S*/gi, " "); // on ignore les liens
   const low = text.toLowerCase();
   const hasKw = KEYWORDS.some(k => low.includes(k));
