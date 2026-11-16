@@ -1,0 +1,34 @@
+name: Radar codes Gil2
+
+on:
+  # Lancement automatique (heures en UTC !).
+  # 06:50 UTC = 07:50 à Bruxelles en hiver (08:50 en été), du lundi au vendredi.
+  schedule:
+    - cron: "50 6 * * 1-5"
+  # Bouton "Run workflow" pour lancer à la main (live surprise, week-end…)
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: "Durée d'écoute en minutes (max 350)"
+        default: "330"
+
+# Jamais deux radars en même temps
+concurrency:
+  group: radar
+  cancel-in-progress: true
+
+jobs:
+  radar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Écouter le chat
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          CHANNEL: gil2_
+          DURATION_MINUTES: ${{ github.event.inputs.minutes || '330' }}
+        run: node radar.mjs
