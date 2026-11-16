@@ -6,6 +6,10 @@ on:
   schedule:
     - cron: "50 6 * * 1-5"
   # Bouton "Run workflow" pour lancer à la main (live surprise, week-end…)
+  # Relance automatique quand radar.mjs ou ce fichier est mis à jour
+  push:
+    branches: [main]
+    paths: ["radar.mjs", ".github/workflows/radar.yml"]
   workflow_dispatch:
     inputs:
       minutes:
