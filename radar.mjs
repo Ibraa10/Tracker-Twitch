@@ -31,6 +31,7 @@ async function push({ title, message, priority = "high", tags = "rotating_light"
         "Priority": priority,
         "Tags": tags,
         "Click": click,
+        "Cache": "yes",   // le serveur garde le message ~12h → livré quand le téléphone retrouve du réseau
       },
     });
     if (!r.ok) console.error("ntfy a répondu", r.status, await r.text());
@@ -45,6 +46,8 @@ function encodeHeader(s) {
 const STOP = new Set(["CODE","CODES","PACK","PACKS","GG","GGWP","LOL","MDR","PTDR","OK","LIVE","TWITCH","HTTP","HTTPS","WWW","COM","RLCS","LCQ","COACH","SUB","SUBS","FREE","GIL2","GIL","CARDS","LE","LA","LES","UN","UNE","DES","ET","EST","POUR","SUR","AVEC","DANS","VOICI","NOUVEAU","CHAT","VITE"]);
 // Emotes très courantes (BTTV/7TV/FFZ) qui ne sont pas signalées par Twitch dans le message
 ["LUL","LULW","KEKW","OMEGALUL","POG","POGU","POGGERS","POGCHAMP","PEPEGA","MONKAS","SADGE","COPIUM","HOPIUM","AYAYA","EZ","EZCLAP","GIGACHAD","CLAP","KAPPA","PEPELAUGH","WIDEPEEPOHAPPY","CATJAM","NOWAY","BASED","MALDING","PEEPOHAPPY","DANSGAME","KEKL"].forEach(e => STOP.add(e));
+// mots français courants parfois écrits en majuscules (évite de les prendre pour des codes)
+["VRAIMENT","EXACTEMENT","SERIEUX","TOUJOURS","JAMAIS","PERSONNE","PUTAIN","BORDEL","MESSIEURS","BONSOIR","BONJOUR","MERCI","BRAVO","FELICITATIONS","INCROYABLE","MAGNIFIQUE","ENSEMBLE","ATTENTION","DÉSOLÉ","DESOLE","ARRETE","ARRÊTE"].forEach(e => STOP.add(e));
 
 // Twitch indique les emotes natives/sub dans le tag `emotes` (id:début-fin,...). On les efface du texte.
 function stripEmotes(text, emotesTag) {
@@ -120,11 +123,13 @@ export function analyse(user, text, tags = {}, isAnnouncement = false) {
       const c = clean(w);
       if (!rejected(c) && /[A-Za-z]/.test(c) && /\d/.test(c)) codes.push(c);
     }
-    // 2) mot tout en MAJUSCULES sans chiffre (EDOUARDOGOAT, NOEL) : plus ambigu → seulement si message court
-    if (codes.length === 0 && tokens.length >= 1 && tokens.length <= 4) {
+    // 2) mot tout en MAJUSCULES sans chiffre (NASSGOAT, EDOUARDOGOAT, NOEL) : plus ambigu.
+    //    message court (≤4 mots) → dès 4 lettres ; message long → seulement les mots longs (≥6) pour limiter le bruit.
+    if (codes.length === 0) {
+      const minLen = tokens.length <= 4 ? 4 : 6;
       for (const w of tokens) {
         const c = clean(w);
-        if (!rejected(c) && c === c.toUpperCase() && c.length >= 4 && !/(.)\1\1/.test(c)) codes.push(c);
+        if (!rejected(c) && /[A-Z]/.test(c) && c === c.toUpperCase() && c.length >= minLen && !/(.)\1\1/.test(c)) codes.push(c);
       }
     }
     codes = [...new Set(codes)];
