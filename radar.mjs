@@ -109,22 +109,25 @@ export function analyse(user, text, tags = {}, isAnnouncement = false) {
   const hasKw = KEYWORDS.some(k => low.includes(k));
   let codes = extractCodes(text);
   if (!hasKw) codes = codes.filter(c => new RegExp("\\bcodes?\\b[^A-Za-z0-9]{0,12}" + c.replace(/-/g, "\\-"), "i").test(text));
-  // Message court d'un streamer qui ressemble à un ou plusieurs codes bruts
-  // Ex. « GTA6 », 'gta6', « NOEL50 !! », « EDOUARDOGOAT / MIAMIGOAT »
-  if (isStreamer && codes.length === 0) {
-    // on coupe aussi sur / , | pour gérer plusieurs codes dans un même message
+  // Codes bruts d'un streamer. On coupe aussi sur / , | pour gérer plusieurs codes.
+  if (isStreamer) {
     const tokens = text.split(/[\s/,|]+/).filter(w => /[A-Za-z0-9]/.test(w));
-    if (tokens.length >= 1 && tokens.length <= 4) {
+    const clean = w => w.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9_\-]+$/g, "");
+    const rejected = c => c.length < 3 || c.length > 32 || STOP.has(c.toUpperCase())
+                         || /^\d+$/.test(c) || /^\d[vV]\d$/.test(c) || /^\d{1,2}[hH]\d{0,2}$/.test(c); // 1v1, 2v2, 17h…
+    // 1) mot mêlant lettres ET chiffres (WIN7, GTA6, noel50) : signal fort → détecté PARTOUT, même dans une phrase
+    for (const w of tokens) {
+      const c = clean(w);
+      if (!rejected(c) && /[A-Za-z]/.test(c) && /\d/.test(c)) codes.push(c);
+    }
+    // 2) mot tout en MAJUSCULES sans chiffre (EDOUARDOGOAT, NOEL) : plus ambigu → seulement si message court
+    if (codes.length === 0 && tokens.length >= 1 && tokens.length <= 4) {
       for (const w of tokens) {
-        const c = w.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9_\-]+$/g, "");
-        if (c.length < 3 || c.length > 32) continue;
-        const U = c.toUpperCase();
-        if (STOP.has(U) || /^\d+$/.test(c) || /^\d[vV]\d$/.test(c) || /^\d{1,2}[hH]\d{0,2}$/.test(c)) continue;      // 1v1, 2v2, 17h…
-        const mixed = /[A-Za-z]/.test(c) && /\d/.test(c);               // GTA6, noel50
-        const caps  = c === U && c.length >= 4 && !/(.)\1\1/.test(c);   // EDOUARDOGOAT, NOEL (pas MDRRR)
-        if (mixed || caps) codes.push(c);                               // on garde TOUS les codes trouvés
+        const c = clean(w);
+        if (!rejected(c) && c === c.toUpperCase() && c.length >= 4 && !/(.)\1\1/.test(c)) codes.push(c);
       }
     }
+    codes = [...new Set(codes)];
   }
   const fresh = codes.filter(c => !seen.has(c.toUpperCase()));
   fresh.forEach(c => seen.add(c.toUpperCase()));
