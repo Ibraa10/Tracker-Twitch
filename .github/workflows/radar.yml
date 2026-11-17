@@ -18,12 +18,13 @@ on:
         description: "Durée d'écoute en minutes (max 350)"
         default: "330"
 
-# Un seul radar à la fois, et on ne coupe JAMAIS un radar en train d'écouter un live :
-# une mise à jour du code ou un lancement manuel attend la fin du live en cours, puis démarre.
-# (Les demandes en attente se remplacent entre elles, donc la plus récente finit par tourner.)
+# Un seul radar à la fois.
+# - Vérifications auto (schedule) et mises à jour du code (push) : n'interrompent JAMAIS un radar
+#   en train d'écouter un live ; elles attendent la fin du live en cours.
+# - Lancement manuel (workflow_dispatch) : prend la main immédiatement (test, ou écoute forcée).
 concurrency:
   group: radar
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' }}
 
 jobs:
   radar:
