@@ -274,7 +274,13 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split("/").pop()
     }, 3 * 60 * 1000);
   } else {
     console.log(`Radar démarré pour ${MINUTES} min sur ${CHANNELS.map(c => "#" + c).join(", ")}`);
-    if (START_PING) await push({ title: "Radar actif", message: `J'écoute ${CHANNELS.map(nameOf).join(" et ")} pendant ${Math.round(MINUTES / 60 * 10) / 10} h.`, priority: "min", tags: "satellite" });
+    // Lancement manuel = test de livraison : notification à priorité MAX, comme une vraie alerte de code
+    if (START_PING) await push({
+      title: "✅ Test radar — notifications OK",
+      message: `Si tu vois cette notification, les codes arriveront pareil.\nJ'écoute ${CHANNELS.map(nameOf).join(" et ")}.`,
+      priority: "max",
+      tags: "white_check_mark",
+    });
   }
   connect();
   setInterval(() => console.log(`… ${msgCount} messages lus`), 10 * 60 * 1000);
