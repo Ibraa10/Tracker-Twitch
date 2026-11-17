@@ -18,12 +18,12 @@ on:
         description: "Durée d'écoute en minutes (max 350)"
         default: "330"
 
-# Un seul radar à la fois.
-# Les vérifications automatiques attendent leur tour au lieu de couper un radar qui écoute un live ;
-# une mise à jour du code ou un lancement manuel remplace le radar en cours.
+# Un seul radar à la fois, et on ne coupe JAMAIS un radar en train d'écouter un live :
+# une mise à jour du code ou un lancement manuel attend la fin du live en cours, puis démarre.
+# (Les demandes en attente se remplacent entre elles, donc la plus récente finit par tourner.)
 concurrency:
   group: radar
-  cancel-in-progress: ${{ github.event_name != 'schedule' }}
+  cancel-in-progress: false
 
 jobs:
   radar:
