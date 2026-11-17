@@ -155,6 +155,7 @@ async function onHit(hit) {
     title: codes.length ? `🚨 ${label} : ${joined}` : `💬 ${hit.user} dans le chat`,
     message: codes.length ? `${joined}\n\n${hit.user} : ${hit.text}` : `${hit.user} : ${hit.text}`,
     tags: codes.length ? "rotating_light" : "speech_balloon",
+    priority: codes.length ? "max" : "default",   // code = notification la plus insistante
   });
 }
 
