@@ -19,12 +19,13 @@ on:
         default: "330"
 
 # Un seul radar à la fois.
-# - Vérifications auto (schedule) et mises à jour du code (push) : n'interrompent JAMAIS un radar
-#   en train d'écouter un live ; elles attendent la fin du live en cours.
-# - Lancement manuel (workflow_dispatch) : prend la main immédiatement (test, ou écoute forcée).
+# - Mise à jour du code (push) et lancement manuel : prennent la main tout de suite,
+#   pour que les corrections s'appliquent immédiatement (court redémarrage de ~30-60 s).
+# - Vérifications auto (schedule, toutes les 10 min) : n'interrompent PAS le radar en cours,
+#   sinon elles le redémarreraient en boucle pendant un live.
 concurrency:
   group: radar
-  cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' }}
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
 
 jobs:
   radar:
