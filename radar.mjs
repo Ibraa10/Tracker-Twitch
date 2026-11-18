@@ -49,34 +49,6 @@ const STOP = new Set(["CODE","CODES","PACK","PACKS","GG","GGWP","LOL","MDR","PTD
 // mots français courants parfois écrits en majuscules (évite de les prendre pour des codes)
 ["VRAIMENT","EXACTEMENT","SERIEUX","TOUJOURS","JAMAIS","PERSONNE","PUTAIN","BORDEL","MESSIEURS","BONSOIR","BONJOUR","MERCI","BRAVO","FELICITATIONS","INCROYABLE","MAGNIFIQUE","ENSEMBLE","ATTENTION","DÉSOLÉ","DESOLE","ARRETE","ARRÊTE"].forEach(e => STOP.add(e));
 
-// Emotes personnalisées (BTTV/7TV/FFZ) des chaînes + globales, chargées au démarrage depuis leurs API.
-// Twitch ne les signale pas dans les messages, donc sans ça elles peuvent passer pour des codes (ex. GCSOON).
-const EMOTES = new Set(["GCSOON", "FIGOAT"]);   // quelques-unes connues, au cas où le chargement échoue
-async function fetchJson(url) { try { const r = await fetch(url, { signal: AbortSignal.timeout(8000) }); if (r.ok) return await r.json(); } catch {} return null; }
-async function fetchText(url) { try { const r = await fetch(url, { signal: AbortSignal.timeout(8000) }); if (r.ok) return (await r.text()).trim(); } catch {} return null; }
-async function loadEmotesFor(channel) {
-  const add = n => { if (n && n.length >= 2) EMOTES.add(n); };
-  const id = await fetchText(`https://decapi.me/twitch/id/${channel}`);
-  if (id && /^\d+$/.test(id)) {
-    const sevenTV = await fetchJson(`https://7tv.io/v3/users/twitch/${id}`);
-    (sevenTV?.emote_set?.emotes || []).forEach(e => add(e?.name));
-    const bttv = await fetchJson(`https://api.betterttv.net/3/cached/users/twitch/${id}`);
-    [...(bttv?.channelEmotes || []), ...(bttv?.sharedEmotes || [])].forEach(e => add(e?.code));
-  }
-  const ffz = await fetchJson(`https://api.frankerfacez.com/v1/room/${channel}`);
-  Object.values(ffz?.sets || {}).forEach(s => (s?.emoticons || []).forEach(e => add(e?.name)));
-}
-async function loadAllEmotes() {
-  try {
-    const g7 = await fetchJson("https://7tv.io/v3/emote-sets/global");
-    (g7?.emotes || []).forEach(e => e?.name && EMOTES.add(e.name));
-    const gb = await fetchJson("https://api.betterttv.net/3/cached/emotes/global");
-    (gb || []).forEach(e => e?.code && EMOTES.add(e.code));
-    for (const ch of CHANNELS) await loadEmotesFor(ch);
-  } catch {}
-  console.log(`Emotes personnalisées chargées : ${EMOTES.size}`);
-}
-
 // Twitch indique les emotes natives/sub dans le tag `emotes` (id:début-fin,...). On les efface du texte.
 function stripEmotes(text, emotesTag) {
   if (!emotesTag) return text;
@@ -150,7 +122,6 @@ export function analyse(user, text, tags = {}, isAnnouncement = false) {
   const isOwner = /(^|,)broadcaster\//.test(tags.badges || "");
   const isStreamer = isOwner || CHANNELS.includes(uName);
   text = stripEmotes(text, tags.emotes);   // on efface les emotes natives/sub signalées par Twitch
-  if (EMOTES.size) text = text.split(/\s+/).map(w => EMOTES.has(w) ? "" : w).join(" ");   // + emotes custom (BTTV/7TV/FFZ)
   text = text.replace(/\b(?:https?:\/\/|www\.)\S+/gi, " ").replace(/\b[\w-]+\.(?:com|fr|gg|tv|be)\b\S*/gi, " "); // on ignore les liens
   const low = text.toLowerCase();
   const hasKw = KEYWORDS.some(k => low.includes(k));
@@ -325,7 +296,6 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split("/").pop()
       tags: "white_check_mark",
     });
   }
-  await loadAllEmotes();   // liste des emotes custom des chaînes, pour ne pas les prendre pour des codes
   connect();
   setInterval(() => console.log(`… ${msgCount} messages lus`), 10 * 60 * 1000);
   setTimeout(() => stop("durée maximale atteinte"), MINUTES * 60 * 1000);
