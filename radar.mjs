@@ -17,10 +17,17 @@ const EXTRA     = (process.env.EXTRA_USERS || "nightbot, streamelements, moobot,
                     .toLowerCase().split(",").map(s => s.trim()).filter(Boolean);
 const START_PING = (process.env.NOTIFY_START || "true") === "true";
 
-if (!TOPIC) { console.error("❌ Secret NTFY_TOPIC manquant."); process.exit(1); }
+const DISCORD_WEBHOOK = process.env.DISCORD_WEBHOOK;        // optionnel : URL de webhook Discord
+const DISCORD_USER    = process.env.DISCORD_USER_ID;       // optionnel : pour un @mention sur les codes
 
-// ---------- envoi ntfy ----------
-async function push({ title, message, priority = "high", tags = "rotating_light", click = SITE }) {
+if (!TOPIC && !DISCORD_WEBHOOK) { console.error("❌ Aucun canal configuré (NTFY_TOPIC ou DISCORD_WEBHOOK)."); process.exit(1); }
+
+// ---------- envoi des notifications (ntfy + Discord en parallèle) ----------
+async function push(opts) {
+  await Promise.all([pushNtfy(opts), pushDiscord(opts)]);
+}
+async function pushNtfy({ title, message, priority = "high", tags = "rotating_light", click = SITE }) {
+  if (!TOPIC) return;
   try {
     const r = await fetch(`${NTFY}/${encodeURIComponent(TOPIC)}`, {
       method: "POST",
@@ -36,6 +43,24 @@ async function push({ title, message, priority = "high", tags = "rotating_light"
     });
     if (!r.ok) console.error("ntfy a répondu", r.status, await r.text());
   } catch (e) { console.error("Échec envoi ntfy :", e.message); }
+}
+async function pushDiscord({ title, message, priority = "high" }) {
+  if (!DISCORD_WEBHOOK) return;
+  // @mention seulement sur les alertes de code (priorité max) si un user id est fourni
+  const mention = (priority === "max" && DISCORD_USER) ? `<@${DISCORD_USER}> ` : "";
+  const content = `${mention}**${title}**\n${message}`.slice(0, 1900);
+  try {
+    const r = await fetch(DISCORD_WEBHOOK, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        content,
+        allowed_mentions: DISCORD_USER ? { users: [DISCORD_USER] } : { parse: [] },
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!r.ok) console.error("Discord a répondu", r.status, await r.text().catch(() => ""));
+  } catch (e) { console.error("Échec envoi Discord :", e.message); }
 }
 // les en-têtes HTTP n'acceptent pas les accents tels quels → encodage RFC 2047
 function encodeHeader(s) {

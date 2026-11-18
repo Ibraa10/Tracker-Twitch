@@ -39,6 +39,8 @@ jobs:
       - name: Écouter le chat
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          DISCORD_USER_ID: ${{ secrets.DISCORD_USER_ID }}
           CHANNELS: "gil2_, edouardotv"
           MODE: ${{ github.event_name == 'workflow_dispatch' && 'manual' || 'auto' }}
           EVENT: ${{ github.event_name }}
