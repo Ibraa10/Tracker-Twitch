@@ -95,7 +95,22 @@ function trusted(user, tags) {
   return CHANNELS.includes(u) || EXTRA.includes(u);
 }
 
-const seen = new Set();
+// Anti-doublon à fenêtre glissante : un même code n'est re-signalé qu'après DEDUP_MS.
+// Évite le spam quand plusieurs modos répètent le code, sans « consommer » définitivement
+// un code qui aurait été écrit en passant plus tôt dans la session.
+const DEDUP_MS = 10 * 60 * 1000;
+const seen = new Map();   // CODE (majuscules) -> horodatage de la dernière fois vu
+function pickFresh(codes) {
+  const now = Date.now();
+  const out = [];
+  for (const c of codes) {
+    const U = c.toUpperCase();
+    const last = seen.get(U);
+    if (last === undefined || now - last > DEDUP_MS) out.push(c);
+    seen.set(U, now);
+  }
+  return out;
+}
 export function analyse(user, text, tags = {}, isAnnouncement = false) {
   if (!trusted(user, tags) && !isAnnouncement) return null;
   console.log(`· ${user}: ${text}`);   // trace des messages de Gil/modos/bots dans les logs
@@ -134,13 +149,12 @@ export function analyse(user, text, tags = {}, isAnnouncement = false) {
     }
     codes = [...new Set(codes)];
   }
-  const fresh = codes.filter(c => !seen.has(c.toUpperCase()));
-  fresh.forEach(c => seen.add(c.toUpperCase()));
+  const fresh = pickFresh(codes);
   // Le propriétaire du chat : ses messages sont transférés, code détecté ou non…
   if (isOwner) {
-    if (fresh.length || codes.length) return { user, text: original, codes: fresh.length ? fresh : codes, isGil: true };
+    if (fresh.length) return { user, text: original, codes: fresh, isGil: true };   // vrai code (pas un doublon récent)
     if (!/[A-Za-z0-9]/.test(text)) return null;   // …sauf un message uniquement emojis/emotes (aucun code possible)
-    return { user, text: original, codes: [], isGil: true };
+    return { user, text: original, codes: [], isGil: true };   // bavardage (ou code déjà signalé il y a <10 min)
   }
   if (fresh.length === 0) return null;   // streamers invités / modos / bots : seulement s'il y a un nouveau code
   return { user, text: original, codes: fresh };
