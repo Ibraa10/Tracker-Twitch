@@ -72,7 +72,7 @@ const STOP = new Set(["CODE","CODES","PACK","PACKS","GG","GGWP","LOL","MDR","PTD
 // Emotes très courantes (BTTV/7TV/FFZ) qui ne sont pas signalées par Twitch dans le message
 ["LUL","LULW","KEKW","OMEGALUL","POG","POGU","POGGERS","POGCHAMP","PEPEGA","MONKAS","SADGE","COPIUM","HOPIUM","AYAYA","EZ","EZCLAP","GIGACHAD","CLAP","KAPPA","PEPELAUGH","WIDEPEEPOHAPPY","CATJAM","NOWAY","BASED","MALDING","PEEPOHAPPY","DANSGAME","KEKL"].forEach(e => STOP.add(e));
 // mots français courants parfois écrits en majuscules (évite de les prendre pour des codes)
-["VRAIMENT","EXACTEMENT","SERIEUX","TOUJOURS","JAMAIS","PERSONNE","PUTAIN","BORDEL","MESSIEURS","BONSOIR","BONJOUR","MERCI","BRAVO","FELICITATIONS","INCROYABLE","MAGNIFIQUE","ENSEMBLE","ATTENTION","DÉSOLÉ","DESOLE","ARRETE","ARRÊTE"].forEach(e => STOP.add(e));
+["VRAIMENT","EXACTEMENT","SERIEUX","TOUJOURS","JAMAIS","PERSONNE","PUTAIN","BORDEL","MESSIEURS","BONSOIR","BONJOUR","MERCI","BRAVO","FELICITATIONS","INCROYABLE","MAGNIFIQUE","ENSEMBLE","ATTENTION","DÉSOLÉ","DESOLE","ARRETE","ARRÊTE","ENCORE","GENEREUX","GÉNÉREUX","APPELEZ","STREAM","DEDOUARDO","NASS","PERE","ATTENDENT","DOMMAGE","MAINTENANT","ABONNE","ABONNEZ"].forEach(e => STOP.add(e));
 
 // Twitch indique les emotes natives/sub dans le tag `emotes` (id:début-fin,...). On les efface du texte.
 function stripEmotes(text, emotesTag) {
@@ -98,6 +98,7 @@ export function extractCodes(text) {
     for (const [i, c] of toks.slice(0, 5).entries()) {
       // un mot normal (sans chiffre, pas en MAJUSCULES) n'est un code que s'il suit directement « code : »
       if (/^[A-Za-zÀ-ÿ_\-]+$/.test(c) && c !== c.toUpperCase() && !(afterSep && i === 0)) continue;
+      if (/^\d+$/.test(c)) continue;   // un nombre seul n'est pas un code (ex. « code 1000 packs »)
       const U = c.toUpperCase();
       if (STOP.has(U) || /^GIL2-?CARDS?$/.test(U) || /^(PROMO|EST|IS|CEST|VOICI|NOUVEAU|DISPO|ACTIF|SUR|POUR)$/.test(U)) continue;
       if (/^[a-zà-ÿ]+$/.test(c) && c.length < 6 && !(afterSep && i === 0)) continue; // petit mot français
@@ -147,6 +148,8 @@ export function analyse(user, text, tags = {}, isAnnouncement = false) {
   const isOwner = /(^|,)broadcaster\//.test(tags.badges || "");
   const isStreamer = isOwner || CHANNELS.includes(uName);
   text = stripEmotes(text, tags.emotes);   // on efface les emotes natives/sub signalées par Twitch
+  text = text.replace(/[@＠][^\s]+/g, " ");           // @mentions = pseudos, pas des codes (ex. @footgam38)
+  text = text.replace(/(^|\s)![^\s]*/g, " ");         // commandes de chat (!bingo, !kc, !setcommand…)
   text = text.replace(/\b(?:https?:\/\/|www\.)\S+/gi, " ").replace(/\b[\w-]+\.(?:com|fr|gg|tv|be)\b\S*/gi, " "); // on ignore les liens
   const low = text.toLowerCase();
   const hasKw = KEYWORDS.some(k => low.includes(k));
@@ -163,25 +166,20 @@ export function analyse(user, text, tags = {}, isAnnouncement = false) {
       const c = clean(w);
       if (!rejected(c) && /[A-Za-z]/.test(c) && /\d/.test(c)) codes.push(c);
     }
-    // 2) mot tout en MAJUSCULES sans chiffre (NASSGOAT, EDOUARDOGOAT, NOEL) : plus ambigu.
-    //    message court (≤4 mots) → dès 4 lettres ; message long → seulement les mots longs (≥6) pour limiter le bruit.
-    if (codes.length === 0) {
-      const minLen = tokens.length <= 4 ? 4 : 6;
+    // 2) mot tout en MAJUSCULES sans chiffre (NASSGOAT, GCSOON, EDOUARDOGOAT) : ambigu, car plein
+    //    de mots français s'écrivent en majuscules. On ne le détecte donc QUE dans un message court
+    //    (≤4 mots), là où un streamer balance le code seul — pas au milieu d'une phrase.
+    if (codes.length === 0 && tokens.length <= 4) {
       for (const w of tokens) {
         const c = clean(w);
-        if (!rejected(c) && /[A-Z]/.test(c) && c === c.toUpperCase() && c.length >= minLen && !/(.)\1\1/.test(c)) codes.push(c);
+        if (!rejected(c) && /[A-Z]/.test(c) && c === c.toUpperCase() && c.length >= 4 && !/(.)\1\1/.test(c)) codes.push(c);
       }
     }
     codes = [...new Set(codes)];
   }
   const fresh = pickFresh(codes);
-  // Le propriétaire du chat : ses messages sont transférés, code détecté ou non…
-  if (isOwner) {
-    if (fresh.length) return { user, text: original, codes: fresh, isGil: true };   // vrai code (pas un doublon récent)
-    if (!/[A-Za-z0-9]/.test(text)) return null;   // …sauf un message uniquement emojis/emotes (aucun code possible)
-    return { user, text: original, codes: [], isGil: true };   // bavardage (ou code déjà signalé il y a <10 min)
-  }
-  if (fresh.length === 0) return null;   // streamers invités / modos / bots : seulement s'il y a un nouveau code
+  // On ne notifie QUE les codes (plus de transfert du bavardage, qui faisait trop de bruit).
+  if (fresh.length === 0) return null;
   return { user, text: original, codes: fresh };
 }
 
