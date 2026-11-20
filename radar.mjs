@@ -160,11 +160,13 @@ export function analyse(user, text, tags = {}, isAnnouncement = false) {
     const tokens = text.split(/[\s/,|]+/).filter(w => /[A-Za-z0-9]/.test(w));
     const clean = w => w.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9_\-]+$/g, "");
     const rejected = c => c.length < 3 || c.length > 32 || STOP.has(c.toUpperCase())
-                         || /^\d+$/.test(c) || /^\d[vV]\d$/.test(c) || /^\d{1,2}[hH]\d{0,2}$/.test(c); // 1v1, 2v2, 17h…
-    // 1) mot mêlant lettres ET chiffres (WIN7, GTA6, noel50) : signal fort → détecté PARTOUT, même dans une phrase
+                         || /^\d+$/.test(c) || /^\d[vV]\d$/.test(c) || /^\d{1,2}[hH]\d{0,2}$/.test(c)   // 1v1, 2v2, 17h…
+                         || /^\d+[kmb]$/i.test(c);   // abréviations de nombres : 10k, 5m…
+    // 1) mot mêlant lettres ET chiffres, AVEC au moins une MAJUSCULE (WIN7, GTA6, TOP37, NOEL50) :
+    //    signal fort → détecté partout. On exige la majuscule pour écarter « 10k », « faib3 », etc.
     for (const w of tokens) {
       const c = clean(w);
-      if (!rejected(c) && /[A-Za-z]/.test(c) && /\d/.test(c)) codes.push(c);
+      if (!rejected(c) && /[A-Z]/.test(c) && /\d/.test(c)) codes.push(c);
     }
     // 2) mot tout en MAJUSCULES sans chiffre (NASSGOAT, GCSOON, EDOUARDOGOAT) : ambigu, car plein
     //    de mots français s'écrivent en majuscules. On ne le détecte donc QUE dans un message court
