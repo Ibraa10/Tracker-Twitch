@@ -72,7 +72,7 @@ const STOP = new Set(["CODE","CODES","PACK","PACKS","GG","GGWP","LOL","MDR","PTD
 // Emotes très courantes (BTTV/7TV/FFZ) qui ne sont pas signalées par Twitch dans le message
 ["LUL","LULW","KEKW","OMEGALUL","POG","POGU","POGGERS","POGCHAMP","PEPEGA","MONKAS","SADGE","COPIUM","HOPIUM","AYAYA","EZ","EZCLAP","GIGACHAD","CLAP","KAPPA","PEPELAUGH","WIDEPEEPOHAPPY","CATJAM","NOWAY","BASED","MALDING","PEEPOHAPPY","DANSGAME","KEKL"].forEach(e => STOP.add(e));
 // mots français courants parfois écrits en majuscules (évite de les prendre pour des codes)
-["VRAIMENT","EXACTEMENT","SERIEUX","TOUJOURS","JAMAIS","PERSONNE","PUTAIN","BORDEL","MESSIEURS","BONSOIR","BONJOUR","MERCI","BRAVO","FELICITATIONS","INCROYABLE","MAGNIFIQUE","ENSEMBLE","ATTENTION","DÉSOLÉ","DESOLE","ARRETE","ARRÊTE","ENCORE","GENEREUX","GÉNÉREUX","APPELEZ","STREAM","DEDOUARDO","NASS","PERE","ATTENDENT","DOMMAGE","MAINTENANT","ABONNE","ABONNEZ"].forEach(e => STOP.add(e));
+["VRAIMENT","EXACTEMENT","SERIEUX","TOUJOURS","JAMAIS","PERSONNE","PUTAIN","BORDEL","MESSIEURS","BONSOIR","BONJOUR","MERCI","BRAVO","FELICITATIONS","INCROYABLE","MAGNIFIQUE","ENSEMBLE","ATTENTION","DÉSOLÉ","DESOLE","ARRETE","ARRÊTE","ENCORE","GENEREUX","GÉNÉREUX","APPELEZ","STREAM","DEDOUARDO","NASS","PERE","ATTENDENT","DOMMAGE","MAINTENANT","ABONNE","ABONNEZ","HEIN","PEUR","OUAIS","OUAIP","GENRE","GRAVE","CARREMENT","BINGO","BOOSTER","MARBLES","VENIR","SETTILE","TIKTOK","ESWAP","COACHING","SCHOOL","VITALITY","CARDS","BOOSTERS"].forEach(e => STOP.add(e));
 
 // Twitch indique les emotes natives/sub dans le tag `emotes` (id:début-fin,...). On les efface du texte.
 function stripEmotes(text, emotesTag) {
@@ -105,11 +105,8 @@ export function extractCodes(text) {
       found.push(c); break;
     }
   }
-  (text.match(/\b[A-Z0-9][A-Z0-9_\-]{3,31}\b/g) || []).forEach(t => {
-    if (STOP.has(t) || /^GIL2-?CARDS?$/.test(t)) return;
-    if (/^\d+$/.test(t) || !/[A-Z]/.test(t)) return;
-    found.push(t);
-  });
+  // Note : on ne ramasse volontairement PAS tous les mots en majuscules du message.
+  // Un code brut (sans le mot « code ») est géré plus bas, et seulement pour Gil/Edouardo.
   return [...new Set(found)];
 }
 
@@ -141,6 +138,7 @@ export function analyse(user, text, tags = {}, isAnnouncement = false) {
   if (!trusted(user, tags) && !isAnnouncement) return null;
   console.log(`· ${user}: ${text}`);   // trace des messages de Gil/modos/bots dans les logs
   const original = text;
+  if (original.trim().startsWith("!")) return null;   // message = commande de chat (!settile, !bingo…)
   const uName = (user || "").toLowerCase();
   // isOwner  = propriétaire du chat en cours (badge streamer) → on transfère TOUS ses messages.
   // isStreamer = Gil ou Edouardo, dans n'importe quel chat → on détecte même un code posté seul,
@@ -174,7 +172,8 @@ export function analyse(user, text, tags = {}, isAnnouncement = false) {
     if (codes.length === 0 && tokens.length <= 4) {
       for (const w of tokens) {
         const c = clean(w);
-        if (!rejected(c) && /[A-Z]/.test(c) && c === c.toUpperCase() && c.length >= 4 && !/(.)\1\1/.test(c)) codes.push(c);
+        // ≥6 lettres : tes vrais codes font tous 6+ (GCSOON, NASSGOAT…), ça écarte HEIN, PEUR, STOP…
+        if (!rejected(c) && /[A-Z]/.test(c) && c === c.toUpperCase() && c.length >= 6 && !/(.)\1\1/.test(c)) codes.push(c);
       }
     }
     codes = [...new Set(codes)];
