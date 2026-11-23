@@ -137,10 +137,10 @@ function pickFresh(codes) {
   return out;
 }
 export function analyse(user, text, tags = {}, isAnnouncement = false) {
-  // On n'analyse QUE le propriétaire de la chaîne (badge broadcaster), ou Gil/Edouardo même
-  // dans le chat de l'autre. Modos, VIP et bots (WizeBot…) sont ignorés → fini leurs faux positifs.
-  const uName = (user || "").toLowerCase();
-  const isStreamer = /(^|,)broadcaster\//.test(tags.badges || "") || CHANNELS.includes(uName);
+  // On n'analyse QUE le propriétaire du chat en cours (badge broadcaster) : sur la chaîne de Gil,
+  // seul Gil ; sur celle d'Edouardo, seul Edouardo. Un streamer invité dans le chat de l'autre,
+  // les modos, les VIP et les bots sont tous ignorés.
+  const isStreamer = /(^|,)broadcaster\//.test(tags.badges || "");
   if (!isStreamer) return null;
   console.log(`· ${user}: ${text}`);   // trace des messages des streamers dans les logs
   const original = text;
