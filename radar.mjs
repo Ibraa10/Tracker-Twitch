@@ -72,7 +72,9 @@ const STOP = new Set(["CODE","CODES","PACK","PACKS","GG","GGWP","LOL","MDR","PTD
 // Emotes très courantes (BTTV/7TV/FFZ) qui ne sont pas signalées par Twitch dans le message
 ["LUL","LULW","KEKW","OMEGALUL","POG","POGU","POGGERS","POGCHAMP","PEPEGA","MONKAS","SADGE","COPIUM","HOPIUM","AYAYA","EZ","EZCLAP","GIGACHAD","CLAP","KAPPA","PEPELAUGH","WIDEPEEPOHAPPY","CATJAM","NOWAY","BASED","MALDING","PEEPOHAPPY","DANSGAME","KEKL"].forEach(e => STOP.add(e));
 // mots français courants parfois écrits en majuscules (évite de les prendre pour des codes)
-["VRAIMENT","EXACTEMENT","SERIEUX","TOUJOURS","JAMAIS","PERSONNE","PUTAIN","BORDEL","MESSIEURS","BONSOIR","BONJOUR","MERCI","BRAVO","FELICITATIONS","INCROYABLE","MAGNIFIQUE","ENSEMBLE","ATTENTION","DÉSOLÉ","DESOLE","ARRETE","ARRÊTE","ENCORE","GENEREUX","GÉNÉREUX","APPELEZ","STREAM","DEDOUARDO","NASS","PERE","ATTENDENT","DOMMAGE","MAINTENANT","ABONNE","ABONNEZ","HEIN","PEUR","OUAIS","OUAIP","GENRE","GRAVE","CARREMENT","BINGO","BOOSTER","MARBLES","VENIR","SETTILE","TIKTOK","ESWAP","COACHING","SCHOOL","VITALITY","CARDS","BOOSTERS"].forEach(e => STOP.add(e));
+["VRAIMENT","EXACTEMENT","SERIEUX","TOUJOURS","JAMAIS","PERSONNE","PUTAIN","BORDEL","MESSIEURS","BONSOIR","BONJOUR","MERCI","BRAVO","FELICITATIONS","INCROYABLE","MAGNIFIQUE","ENSEMBLE","ATTENTION","DÉSOLÉ","DESOLE","ARRETE","ARRÊTE","ENCORE","GENEREUX","GÉNÉREUX","APPELEZ","STREAM","DEDOUARDO","NASS","PERE","ATTENDENT","DOMMAGE","MAINTENANT","ABONNE","ABONNEZ","HEIN","PEUR","OUAIS","OUAIP","GENRE","GRAVE","CARREMENT","BINGO","BOOSTER","MARBLES","VENIR","SETTILE","TIKTOK","ESWAP","COACHING","SCHOOL","VITALITY","CARDS","BOOSTERS","HORUS"].forEach(e => STOP.add(e));
+// les noms des chaînes elles-mêmes ne sont pas des codes (ex. « mon code Gil2_ » dans une pub partenaire)
+CHANNELS.forEach(c => { const U = c.toUpperCase(); STOP.add(U); STOP.add(U.replace(/_+$/, "")); });
 
 // Twitch indique les emotes natives/sub dans le tag `emotes` (id:début-fin,...). On les efface du texte.
 function stripEmotes(text, emotesTag) {
@@ -139,6 +141,7 @@ export function analyse(user, text, tags = {}, isAnnouncement = false) {
   console.log(`· ${user}: ${text}`);   // trace des messages de Gil/modos/bots dans les logs
   const original = text;
   if (original.trim().startsWith("!")) return null;   // message = commande de chat (!settile, !bingo…)
+  if (/\bpartenaire\b/i.test(original)) return null;  // pub sponsor (ex. « avec mon lien partenaire »)
   const uName = (user || "").toLowerCase();
   // isOwner  = propriétaire du chat en cours (badge streamer) → on transfère TOUS ses messages.
   // isStreamer = Gil ou Edouardo, dans n'importe quel chat → on détecte même un code posté seul,
