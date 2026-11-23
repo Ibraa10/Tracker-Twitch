@@ -299,17 +299,23 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split("/").pop()
       const h = parseInt(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Brussels", hour: "numeric", hourCycle: "h23" }).format(new Date()), 10);
       if (h < from || h >= to) { console.log(`Il est ${h}h à Bruxelles, hors de la plage ${from}h-${to}h : rien à faire.`); process.exit(0); }
     }
-    const { live, known } = await liveChannels();
-    if (live.length === 0) { console.log(known ? "Personne en live, rien à faire." : "Statut des lives inconnu, on réessaiera dans 10 min."); process.exit(0); }
-    const names = live.map(nameOf).join(" et ");
-    console.log(`🔴 En live : ${names} — radar lancé (max ${MINUTES} min)`);
-    await push({ title: `🔴 ${names} en live`, message: "Le radar écoute le chat, tu seras prévenu dès qu'un code tombe.", priority: "high", tags: "red_circle", click: `https://www.twitch.tv/${live[0]}` });
-    // s'arrête après ~12 min sans personne en live (évite de couper sur une petite coupure du stream)
-    let offlineChecks = 0;
+    // On écoute pendant TOUTE la fenêtre, que le live soit détecté ou non (dépôt public = minutes illimitées).
+    // La détection de live ne sert plus qu'à envoyer la notif « en live » — si elle rate, les codes passent quand même.
+    const { live } = await liveChannels();
+    const notified = new Set();   // chaînes pour lesquelles on a déjà envoyé « en live »
+    async function announce(ch) {
+      notified.add(ch);
+      console.log(`🔴 En live : ${nameOf(ch)}`);
+      await push({ title: `🔴 ${nameOf(ch)} en live`, message: "Le radar écoute le chat, tu seras prévenu dès qu'un code tombe.", priority: "high", tags: "red_circle", click: `https://www.twitch.tv/${ch}` });
+    }
+    for (const ch of live) await announce(ch);
+    if (live.length === 0) console.log("Personne détecté en live pour l'instant — on écoute quand même.");
+    // surveille les passages en live pour notifier, SANS jamais couper l'écoute
     setInterval(async () => {
       const r = await liveChannels();
-      offlineChecks = (r.known && r.live.length === 0) ? offlineChecks + 1 : 0;
-      if (offlineChecks >= 4) stop("plus personne en live");
+      if (!r.known) return;
+      for (const ch of r.live) if (!notified.has(ch)) await announce(ch);
+      for (const ch of [...notified]) if (!r.live.includes(ch)) notified.delete(ch);  // repassé hors ligne → re-notifiable
     }, 3 * 60 * 1000);
   } else {
     console.log(`Radar démarré pour ${MINUTES} min sur ${CHANNELS.map(c => "#" + c).join(", ")}`);
