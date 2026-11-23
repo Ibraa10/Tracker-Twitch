@@ -137,17 +137,15 @@ function pickFresh(codes) {
   return out;
 }
 export function analyse(user, text, tags = {}, isAnnouncement = false) {
-  if (!trusted(user, tags) && !isAnnouncement) return null;
-  console.log(`· ${user}: ${text}`);   // trace des messages de Gil/modos/bots dans les logs
+  // On n'analyse QUE le propriétaire de la chaîne (badge broadcaster), ou Gil/Edouardo même
+  // dans le chat de l'autre. Modos, VIP et bots (WizeBot…) sont ignorés → fini leurs faux positifs.
+  const uName = (user || "").toLowerCase();
+  const isStreamer = /(^|,)broadcaster\//.test(tags.badges || "") || CHANNELS.includes(uName);
+  if (!isStreamer) return null;
+  console.log(`· ${user}: ${text}`);   // trace des messages des streamers dans les logs
   const original = text;
   if (original.trim().startsWith("!")) return null;   // message = commande de chat (!settile, !bingo…)
   if (/\bpartenaire\b/i.test(original)) return null;  // pub sponsor (ex. « avec mon lien partenaire »)
-  const uName = (user || "").toLowerCase();
-  // isOwner  = propriétaire du chat en cours (badge streamer) → on transfère TOUS ses messages.
-  // isStreamer = Gil ou Edouardo, dans n'importe quel chat → on détecte même un code posté seul,
-  //              mais on ne transfère pas son bavardage s'il n'est pas chez lui.
-  const isOwner = /(^|,)broadcaster\//.test(tags.badges || "");
-  const isStreamer = isOwner || CHANNELS.includes(uName);
   text = stripEmotes(text, tags.emotes);   // on efface les emotes natives/sub signalées par Twitch
   text = text.replace(/[@＠][^\s]+/g, " ");           // @mentions = pseudos, pas des codes (ex. @footgam38)
   text = text.replace(/(^|\s)![^\s]*/g, " ");         // commandes de chat (!bingo, !kc, !setcommand…)
