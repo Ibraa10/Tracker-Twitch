@@ -246,39 +246,45 @@ function handleLine(line) {
 }
 
 // ---------- qui est en live ? ----------
-// Pour une chaîne : true = en live, false = hors ligne, null = impossible de savoir
+// Pour une chaîne : { live: true/false/null, uptimeMin: nombre|null }
+// live=null = impossible de savoir ; uptimeMin = depuis combien de minutes le live tourne (si connu).
 async function isLiveOne(channel) {
-  // 1) API publique utilisée par le site Twitch lui-même
+  // 1) API publique utilisée par le site Twitch lui-même (donne aussi l'heure de début)
   try {
     const r = await fetch("https://gql.twitch.tv/gql", {
       method: "POST",
       headers: { "Client-Id": "kimne78kx3ncx6brgo4mv6wki5h1ko", "Content-Type": "application/json" },
-      body: JSON.stringify({ query: `query{user(login:"${channel}"){stream{id}}}` }),
+      body: JSON.stringify({ query: `query{user(login:"${channel}"){stream{id createdAt}}}` }),
       signal: AbortSignal.timeout(10000),
     });
     if (r.ok) {
       const j = await r.json();
-      if (j?.data?.user !== undefined) return !!j.data.user?.stream;
+      if (j?.data?.user !== undefined) {
+        const s = j.data.user?.stream;
+        if (!s) return { live: false, uptimeMin: null };
+        const t = s.createdAt ? Date.parse(s.createdAt) : NaN;
+        return { live: true, uptimeMin: Number.isFinite(t) ? (Date.now() - t) / 60000 : null };
+      }
     }
   } catch {}
-  // 2) Secours : decapi.me
+  // 2) Secours : decapi.me (live/offline, sans l'heure de début)
   try {
     const r = await fetch(`https://decapi.me/twitch/uptime/${channel}`, { signal: AbortSignal.timeout(10000) });
-    if (r.ok) { const t = (await r.text()).toLowerCase(); if (t.includes("offline")) return false; if (/\d/.test(t)) return true; }
+    if (r.ok) { const t = (await r.text()).toLowerCase(); if (t.includes("offline")) return { live: false, uptimeMin: null }; if (/\d/.test(t)) return { live: true, uptimeMin: null }; }
   } catch {}
-  return null;
+  return { live: null, uptimeMin: null };
 }
 
-// Toutes les chaînes : { live: [chaînes en live], known: au moins une réponse obtenue }
+// Toutes les chaînes : { live: [en live], known: au moins une réponse, fresh: [live depuis <15 min] }
 async function liveChannels() {
-  const live = [];
+  const live = [], fresh = new Set();
   let known = false;
   for (const ch of CHANNELS) {
     const s = await isLiveOne(ch);
-    if (s !== null) known = true;
-    if (s === true) live.push(ch);
+    if (s.live !== null) known = true;
+    if (s.live === true) { live.push(ch); if (s.uptimeMin !== null && s.uptimeMin < 15) fresh.add(ch); }
   }
-  return { live, known };
+  return { live, known, fresh };
 }
 
 // ---------- lancement ----------
@@ -301,21 +307,23 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split("/").pop()
     }
     // On écoute pendant TOUTE la fenêtre, que le live soit détecté ou non (dépôt public = minutes illimitées).
     // La détection de live ne sert plus qu'à envoyer la notif « en live » — si elle rate, les codes passent quand même.
-    const { live } = await liveChannels();
+    const { live, fresh } = await liveChannels();
     const notified = new Set();   // chaînes pour lesquelles on a déjà envoyé « en live »
     async function announce(ch) {
       notified.add(ch);
       console.log(`🔴 En live : ${nameOf(ch)}`);
       await push({ title: `🔴 ${nameOf(ch)} en live`, message: "Le radar écoute le chat, tu seras prévenu dès qu'un code tombe.", priority: "high", tags: "red_circle", click: `https://www.twitch.tv/${ch}` });
     }
-    for (const ch of live) await announce(ch);
+    // Au démarrage : on notifie seulement un live qui vient de commencer (<15 min).
+    // Un live déjà en cours depuis des heures a déjà été annoncé par un run précédent → on le note sans re-notifier.
+    for (const ch of live) { if (fresh.has(ch)) await announce(ch); else notified.add(ch); }
     if (live.length === 0) console.log("Personne détecté en live pour l'instant — on écoute quand même.");
-    // surveille les passages en live pour notifier, SANS jamais couper l'écoute
+    // Surveille les passages hors-ligne → en-ligne pour notifier, SANS jamais couper l'écoute.
     setInterval(async () => {
       const r = await liveChannels();
       if (!r.known) return;
-      for (const ch of r.live) if (!notified.has(ch)) await announce(ch);
-      for (const ch of [...notified]) if (!r.live.includes(ch)) notified.delete(ch);  // repassé hors ligne → re-notifiable
+      for (const ch of r.live) if (!notified.has(ch)) await announce(ch);          // vient de passer en live
+      for (const ch of [...notified]) if (!r.live.includes(ch)) notified.delete(ch); // repassé hors ligne → re-notifiable
     }, 3 * 60 * 1000);
   } else {
     console.log(`Radar démarré pour ${MINUTES} min sur ${CHANNELS.map(c => "#" + c).join(", ")}`);
